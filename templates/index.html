@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Consulta e Confirmação de Férias</title>
+  <style>
+    :root{
+      --azul:#103b73;
+      --azul-claro:#eaf2fb;
+      --cinza:#5b6573;
+      --borda:#d7deea;
+      --ok:#0d7a3d;
+      --erro:#b42318;
+      --fundo:#f5f7fb;
+      --branco:#ffffff;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family:Arial, Helvetica, sans-serif;
+      background:linear-gradient(180deg,#eef4fb 0%, #f7f9fc 100%);
+      color:#1b2430;
+    }
+    .wrap{
+      max-width:760px;
+      margin:0 auto;
+      padding:20px 16px 40px;
+    }
+    .card{
+      background:var(--branco);
+      border:1px solid var(--borda);
+      border-radius:20px;
+      box-shadow:0 8px 30px rgba(16,59,115,.08);
+      padding:22px;
+    }
+    .topo{
+      text-align:center;
+      margin-bottom:18px;
+    }
+    .selo{
+      display:inline-block;
+      background:var(--azul-claro);
+      color:var(--azul);
+      font-weight:700;
+      padding:8px 14px;
+      border-radius:999px;
+      margin-bottom:12px;
+      font-size:14px;
+    }
+    h1{
+      font-size:28px;
+      line-height:1.15;
+      margin:0 0 8px;
+      color:var(--azul);
+    }
+    .sub{
+      font-size:17px;
+      line-height:1.45;
+      color:var(--cinza);
+      margin:0;
+    }
+    .bloco{
+      margin-top:22px;
+      border:1px solid var(--borda);
+      border-radius:16px;
+      padding:18px;
+      background:#fcfdff;
+    }
+    label{
+      display:block;
+      font-size:15px;
+      font-weight:700;
+      margin-bottom:8px;
+      color:#1d2b3a;
+    }
+    input, textarea, select{
+      width:100%;
+      padding:14px 14px;
+      border:1px solid #cfd7e6;
+      border-radius:12px;
+      font-size:16px;
+      outline:none;
+      background:#fff;
+    }
+    input:focus, textarea:focus, select:focus{
+      border-color:#8bb6ef;
+      box-shadow:0 0 0 4px rgba(27,104,201,.12);
+    }
+    textarea{
+      min-height:110px;
+      resize:vertical;
+    }
+    .grid{
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      gap:14px;
+    }
+    .linha{
+      margin-bottom:14px;
+    }
+    .btn{
+      width:100%;
+      border:none;
+      border-radius:14px;
+      padding:16px 18px;
+      font-size:17px;
+      font-weight:700;
+      cursor:pointer;
+      transition:.18s ease;
+    }
+    .btn:hover{transform:translateY(-1px)}
+    .btn-primario{
+      background:var(--azul);
+      color:#fff;
+    }
+    .btn-secundario{
+      background:#0f7b45;
+      color:#fff;
+    }
+    .dados{
+      display:none;
+    }
+    .caixa-dado{
+      background:#f7faff;
+      border:1px solid #dce8f8;
+      border-radius:14px;
+      padding:14px;
+    }
+    .titulo-dado{
+      font-size:13px;
+      font-weight:700;
+      color:#5c6b7c;
+      text-transform:uppercase;
+      letter-spacing:.02em;
+      margin-bottom:6px;
+    }
+    .valor-dado{
+      font-size:18px;
+      font-weight:700;
+      color:#173454;
+      line-height:1.3;
+      word-break:break-word;
+    }
+    .msg{
+      margin-top:14px;
+      padding:14px 16px;
+      border-radius:14px;
+      font-size:15px;
+      display:none;
+    }
+    .msg.ok{
+      background:#ecfdf3;
+      color:var(--ok);
+      border:1px solid #abefc6;
+    }
+    .msg.erro{
+      background:#fef3f2;
+      color:var(--erro);
+      border:1px solid #fecdca;
+    }
+    .check{
+      display:flex;
+      gap:10px;
+      align-items:flex-start;
+      background:#f8fafc;
+      border:1px solid #dde5f1;
+      padding:14px;
+      border-radius:14px;
+    }
+    .check input{
+      width:20px;
+      height:20px;
+      margin-top:2px;
+    }
+    .rodape{
+      text-align:center;
+      color:#667085;
+      font-size:13px;
+      margin-top:18px;
+    }
+    .oculto{display:none}
+    @media (max-width:640px){
+      h1{font-size:24px}
+      .sub{font-size:16px}
+      .grid{grid-template-columns:1fr}
+      .card{padding:18px}
+      .bloco{padding:15px}
+      .valor-dado{font-size:17px}
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topo">
+      <div class="selo">BRA Serviços</div>
+      <h1>Consulta e confirmação de férias</h1>
+      <p class="sub">Digite sua matrícula para consultar seus dados e registrar sua opção de férias em uma única tela.</p>
+    </div>
+
+    <div class="card">
+      <div class="bloco">
+        <div class="linha">
+          <label for="matricula">Matrícula</label>
+          <input type="text" id="matricula" inputmode="numeric" placeholder="Digite sua matrícula">
+        </div>
+        <button class="btn btn-primario" id="btnConsultar">Consultar meus dados</button>
+        <div id="mensagemConsulta" class="msg"></div>
+      </div>
+
+      <div class="bloco dados" id="blocoDados">
+        <div class="grid">
+          <div class="caixa-dado">
+            <div class="titulo-dado">Nome</div>
+            <div class="valor-dado" id="nome"></div>
+          </div>
+          <div class="caixa-dado">
+            <div class="titulo-dado">Unidade</div>
+            <div class="valor-dado" id="unidade"></div>
+          </div>
+          <div class="caixa-dado">
+            <div class="titulo-dado">Mês de férias</div>
+            <div class="valor-dado" id="mesFerias"></div>
+          </div>
+          <div class="caixa-dado">
+            <div class="titulo-dado">Matrícula</div>
+            <div class="valor-dado" id="matriculaConfirmada"></div>
+          </div>
+        </div>
+
+        <div style="height:16px"></div>
+
+        <div class="linha">
+          <label for="tipoFerias">Tipo de férias</label>
+          <select id="tipoFerias">
+            <option value="">Selecione</option>
+            <option value="30 dias de descanso">30 dias de descanso</option>
+            <option value="20 dias de descanso + 10 dias de abono">20 dias de descanso + 10 dias de abono</option>
+          </select>
+        </div>
+
+        <div class="grid">
+          <div class="linha">
+            <label for="email">E-mail</label>
+            <input type="email" id="email" placeholder="Digite seu e-mail">
+          </div>
+          <div class="linha">
+            <label for="telefone">Telefone / WhatsApp com DDD</label>
+            <input type="text" id="telefone" placeholder="Ex.: 48999998888">
+          </div>
+        </div>
+
+        <div class="linha">
+          <label for="observacoes">Observações (opcional)</label>
+          <textarea id="observacoes" placeholder="Informe aqui divergência de unidade ou outra observação, se necessário."></textarea>
+        </div>
+
+        <div class="linha">
+          <label>Declaração de ciência</label>
+          <div class="check">
+            <input type="checkbox" id="ciencia">
+            <div>Declaro que consultei meu mês de férias e registrei minha opção de forma consciente.</div>
+          </div>
+        </div>
+
+        <button class="btn btn-secundario" id="btnEnviar">Confirmar e enviar</button>
+        <div id="mensagemEnvio" class="msg"></div>
+      </div>
+
+      <div class="rodape">Em caso de dúvida, entre em contato com o RH da BRA Serviços.</div>
+    </div>
+  </div>
+
+  <script>
+    const el = (id) => document.getElementById(id);
+
+    function mostrarMensagem(alvo, texto, tipo) {
+      alvo.textContent = texto;
+      alvo.className = 'msg ' + tipo;
+      alvo.style.display = 'block';
+    }
+
+    function limparMensagem(alvo) {
+      alvo.style.display = 'none';
+      alvo.textContent = '';
+      alvo.className = 'msg';
+    }
+
+    function preencherDados(colaborador) {
+      el('nome').textContent = colaborador.nome || '';
+      el('unidade').textContent = colaborador.unidade || '';
+      el('mesFerias').textContent = colaborador.mes_ferias || '';
+      el('matriculaConfirmada').textContent = colaborador.matricula || '';
+      el('blocoDados').style.display = 'block';
+      window.scrollTo({ top: el('blocoDados').offsetTop - 10, behavior: 'smooth' });
+    }
+
+    function limparFormulario() {
+      el('tipoFerias').value = '';
+      el('email').value = '';
+      el('telefone').value = '';
+      el('observacoes').value = '';
+      el('ciencia').checked = false;
+      limparMensagem(el('mensagemEnvio'));
+    }
+
+    async function consultar() {
+      limparMensagem(el('mensagemConsulta'));
+      limparMensagem(el('mensagemEnvio'));
+      el('blocoDados').style.display = 'none';
+
+      const matricula = el('matricula').value.trim();
+      if (!matricula) {
+        mostrarMensagem(el('mensagemConsulta'), 'Informe a matrícula.', 'erro');
+        return;
+      }
+
+      const botao = el('btnConsultar');
+      botao.disabled = true;
+      botao.textContent = 'Consultando...';
+
+      try {
+        const resp = await fetch('/api/consultar', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ matricula })
+        });
+
+        const dados = await resp.json();
+
+        if (!resp.ok) {
+          mostrarMensagem(el('mensagemConsulta'), dados.mensagem || 'Não foi possível consultar.', 'erro');
+          return;
+        }
+
+        preencherDados(dados.colaborador);
+        limparFormulario();
+      } catch (erro) {
+        mostrarMensagem(el('mensagemConsulta'), 'Falha ao consultar. Tente novamente.', 'erro');
+      } finally {
+        botao.disabled = false;
+        botao.textContent = 'Consultar meus dados';
+      }
+    }
+
+    async function enviar() {
+      limparMensagem(el('mensagemEnvio'));
+
+      const dados = {
+        matricula: el('matriculaConfirmada').textContent.trim(),
+        nome: el('nome').textContent.trim(),
+        unidade: el('unidade').textContent.trim(),
+        mes_ferias: el('mesFerias').textContent.trim(),
+        tipo_ferias: el('tipoFerias').value,
+        email: el('email').value.trim(),
+        telefone: el('telefone').value.trim(),
+        observacoes: el('observacoes').value.trim(),
+        ciencia: el('ciencia').checked
+      };
+
+      const botao = el('btnEnviar');
+      botao.disabled = true;
+      botao.textContent = 'Enviando...';
+
+      try {
+        const resp = await fetch('/api/enviar', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(dados)
+        });
+
+        const retorno = await resp.json();
+
+        if (!resp.ok) {
+          mostrarMensagem(el('mensagemEnvio'), retorno.mensagem || 'Não foi possível enviar.', 'erro');
+          return;
+        }
+
+        mostrarMensagem(el('mensagemEnvio'), retorno.mensagem || 'Resposta enviada com sucesso.', 'ok');
+        botao.style.display = 'none';
+      } catch (erro) {
+        mostrarMensagem(el('mensagemEnvio'), 'Falha ao enviar. Tente novamente.', 'erro');
+      } finally {
+        botao.disabled = false;
+        botao.textContent = 'Confirmar e enviar';
+      }
+    }
+
+    el('btnConsultar').addEventListener('click', consultar);
+    el('btnEnviar').addEventListener('click', enviar);
+    el('matricula').addEventListener('keydown', function(e){
+      if (e.key === 'Enter') consultar();
+    });
+  </script>
+</body>
+</html>
