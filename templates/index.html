@@ -110,6 +110,11 @@
       transition:.18s ease;
     }
     .btn:hover{transform:translateY(-1px)}
+    .btn:disabled{
+      opacity:.7;
+      cursor:not-allowed;
+      transform:none;
+    }
     .btn-primario{
       background:var(--azul);
       color:#fff;
@@ -172,6 +177,7 @@
       width:20px;
       height:20px;
       margin-top:2px;
+      flex:0 0 auto;
     }
     .rodape{
       text-align:center;
@@ -179,7 +185,6 @@
       font-size:13px;
       margin-top:18px;
     }
-    .oculto{display:none}
     @media (max-width:640px){
       h1{font-size:24px}
       .sub{font-size:16px}
@@ -195,14 +200,20 @@
     <div class="topo">
       <div class="selo">BRA Serviços</div>
       <h1>Consulta e confirmação de férias</h1>
-      <p class="sub">Digite sua matrícula para consultar seus dados e registrar sua opção de férias em uma única tela.</p>
+      <p class="sub">Digite sua matrícula ou CPF para consultar seus dados e registrar sua opção de férias em uma única tela.</p>
     </div>
 
     <div class="card">
       <div class="bloco">
         <div class="linha">
-          <label for="matricula">Matrícula</label>
-          <input type="text" id="matricula" inputmode="numeric" placeholder="Digite sua matrícula">
+          <label for="identificador">Matrícula ou CPF</label>
+          <input
+            type="text"
+            id="identificador"
+            inputmode="numeric"
+            placeholder="Digite sua matrícula ou CPF"
+            autocomplete="off"
+          >
         </div>
         <button class="btn btn-primario" id="btnConsultar">Consultar meus dados</button>
         <div id="mensagemConsulta" class="msg"></div>
@@ -292,6 +303,7 @@
       el('mesFerias').textContent = colaborador.mes_ferias || '';
       el('matriculaConfirmada').textContent = colaborador.matricula || '';
       el('blocoDados').style.display = 'block';
+      el('btnEnviar').style.display = 'block';
       window.scrollTo({ top: el('blocoDados').offsetTop - 10, behavior: 'smooth' });
     }
 
@@ -301,6 +313,7 @@
       el('telefone').value = '';
       el('observacoes').value = '';
       el('ciencia').checked = false;
+      el('btnEnviar').style.display = 'block';
       limparMensagem(el('mensagemEnvio'));
     }
 
@@ -309,9 +322,10 @@
       limparMensagem(el('mensagemEnvio'));
       el('blocoDados').style.display = 'none';
 
-      const matricula = el('matricula').value.trim();
-      if (!matricula) {
-        mostrarMensagem(el('mensagemConsulta'), 'Informe a matrícula.', 'erro');
+      const identificador = el('identificador').value.trim();
+
+      if (!identificador) {
+        mostrarMensagem(el('mensagemConsulta'), 'Informe a matrícula ou o CPF.', 'erro');
         return;
       }
 
@@ -323,13 +337,17 @@
         const resp = await fetch('/api/consultar', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({ matricula })
+          body: JSON.stringify({ identificador })
         });
 
         const dados = await resp.json();
 
         if (!resp.ok) {
-          mostrarMensagem(el('mensagemConsulta'), dados.mensagem || 'Não foi possível consultar.', 'erro');
+          mostrarMensagem(
+            el('mensagemConsulta'),
+            dados.mensagem || 'Não foi possível consultar.',
+            'erro'
+          );
           return;
         }
 
@@ -372,11 +390,19 @@
         const retorno = await resp.json();
 
         if (!resp.ok) {
-          mostrarMensagem(el('mensagemEnvio'), retorno.mensagem || 'Não foi possível enviar.', 'erro');
+          mostrarMensagem(
+            el('mensagemEnvio'),
+            retorno.mensagem || 'Não foi possível enviar.',
+            'erro'
+          );
           return;
         }
 
-        mostrarMensagem(el('mensagemEnvio'), retorno.mensagem || 'Resposta enviada com sucesso.', 'ok');
+        mostrarMensagem(
+          el('mensagemEnvio'),
+          retorno.mensagem || 'Resposta enviada com sucesso.',
+          'ok'
+        );
         botao.style.display = 'none';
       } catch (erro) {
         mostrarMensagem(el('mensagemEnvio'), 'Falha ao enviar. Tente novamente.', 'erro');
@@ -388,7 +414,7 @@
 
     el('btnConsultar').addEventListener('click', consultar);
     el('btnEnviar').addEventListener('click', enviar);
-    el('matricula').addEventListener('keydown', function(e){
+    el('identificador').addEventListener('keydown', function(e) {
       if (e.key === 'Enter') consultar();
     });
   </script>
