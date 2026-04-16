@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import io
@@ -30,7 +29,7 @@ _write_lock = Lock()
 _base_cache: dict[str, dict] = {}
 _base_cache_expires_at: datetime | None = None
 
-BASE_FIELDS = ["MATRICULA", "NOME", "UNIDADE", "MES_FERIAS"]
+BASE_FIELDS = ["MATRICULA", "CPF", "NOME", "UNIDADE", "MES_FERIAS"]
 RESPONSE_HEADERS = [
     "DATA_HORA",
     "MATRICULA",
@@ -49,12 +48,16 @@ def normalize(value) -> str:
     return str("" if value is None else value).strip()
 
 
+def only_digits(value) -> str:
+    return "".join(ch for ch in str("" if value is None else value) if ch.isdigit())
+
+
 def email_valid(email: str) -> bool:
     return "@" in email and "." in email.split("@")[-1] and " " not in email
 
 
 def phone_valid(phone: str) -> bool:
-    digits = "".join(ch for ch in phone if ch.isdigit())
+    digits = only_digits(phone)
     return len(digits) in (10, 11)
 
 
@@ -101,7 +104,7 @@ def ensure_responses_sheet() -> None:
 
     current = ws.row_values(1)
     if current[: len(RESPONSE_HEADERS)] != RESPONSE_HEADERS:
-        ws.update('A1:J1', [RESPONSE_HEADERS])
+        ws.update("A1:J1", [RESPONSE_HEADERS])
 
 
 def load_base(force: bool = False) -> dict[str, dict]:
@@ -113,32 +116,73 @@ def load_base(force: bool = False) -> dict[str, dict]:
 
         ws = get_worksheet(BASE_SHEET_NAME)
         records = ws.get_all_records(expected_headers=BASE_FIELDS)
-        result = {}
-        duplicates = []
+
+        result: dict[str, dict] = {}
+        matriculas_duplicadas: list[str] = []
+        cpfs_duplicados: list[str] = []
 
         for row in records:
             matricula = normalize(row.get("MATRICULA"))
+            cpf = only_digits(row.get("CPF"))
+
             if not matricula:
                 continue
-            if matricula in result:
-                duplicates.append(matricula)
-                continue
-            result[matricula] = {
+
+            collaborator = {
                 "matricula": matricula,
+                "cpf": cpf,
                 "nome": normalize(row.get("NOME")),
                 "unidade": normalize(row.get("UNIDADE")),
                 "mes_ferias": normalize(row.get("MES_FERIAS")),
             }
 
-        if duplicates:
+            chave_matricula = f"matricula:{matricula}"
+            if chave_matricula in result:
+                matriculas_duplicadas.append(matricula)
+            else:
+                result[chave_matricula] = collaborator
+
+            if cpf:
+                chave_cpf = f"cpf:{cpf}"
+                if chave_cpf in result:
+                    cpfs_duplicados.append(cpf)
+                else:
+                    result[chave_cpf] = collaborator
+
+        if matriculas_duplicadas:
             raise RuntimeError(
                 "Existem matrículas duplicadas na aba BASE_COLABORADORES: "
-                + ", ".join(duplicates[:10])
+                + ", ".join(matriculas_duplicadas[:10])
+            )
+
+        if cpfs_duplicados:
+            raise RuntimeError(
+                "Existem CPFs duplicados na aba BASE_COLABORADORES: "
+                + ", ".join(cpfs_duplicados[:10])
             )
 
         _base_cache = result
         _base_cache_expires_at = now + timedelta(minutes=CACHE_MINUTES)
         return _base_cache
+
+
+def find_collaborator(base: dict[str, dict], identificador: str) -> dict | None:
+    identificador_normalizado = normalize(identificador)
+    identificador_numerico = only_digits(identificador)
+
+    if not identificador_normalizado:
+        return None
+
+    collaborator = base.get(f"matricula:{identificador_normalizado}")
+    if collaborator:
+        return collaborator
+
+    if identificador_numerico:
+        collaborator = base.get(f"cpf:{identificador_numerico}")
+        if collaborator:
+            return collaborator
+
+    return None
 
 
 def answer_exists(matricula: str) -> bool:
@@ -172,19 +216,27 @@ def health():
 def api_consultar():
     try:
         payload = request.get_json(silent=True) or {}
-        matricula = normalize(payload.get("matricula"))
-        if not matricula:
-            return jsonify({"sucesso": False, "mensagem": "Informe a matrícula."}), 400
+        identificador = normalize(payload.get("identificador"))
 
-        base = load_base()
-        collaborator = base.get(matricula)
-        if not collaborator:
-            return jsonify({"sucesso": False, "mensagem": "Matrícula não localizada."}), 404
-
-        if answer_exists(matricula):
+        if not identificador:
             return jsonify({
                 "sucesso": False,
-                "mensagem": "Já existe uma resposta registrada para esta matrícula.",
+                "mensagem": "Informe a matrícula ou o CPF."
+            }), 400
+
+        base = load_base()
+        collaborator = find_collaborator(base, identificador)
+
+        if not collaborator:
+            return jsonify({
+                "sucesso": False,
+                "mensagem": "Matrícula ou CPF não localizado."
+            }), 404
+
+        if answer_exists(collaborator["matricula"]):
+            return jsonify({
+                "sucesso": False,
+                "mensagem": "Já existe uma resposta registrada para este colaborador.",
                 "bloqueado": True,
             }), 409
 
@@ -220,7 +272,7 @@ def api_enviar():
 
     try:
         base = load_base()
-        collaborator = base.get(matricula)
+        collaborator = base.get(f"matricula:{matricula}")
         if not collaborator:
             return jsonify({"sucesso": False, "mensagem": "Matrícula não localizada."}), 404
 
