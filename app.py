@@ -23,7 +23,7 @@ HISTORY_SHEET_NAME = os.getenv("HISTORY_SHEET_NAME", "HISTORICO_ALTERACOES")
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "RH_BRA_2026")
 CACHE_MINUTES = int(os.getenv("CACHE_MINUTES", "10"))
 PORT = int(os.getenv("PORT", "10000"))
-EDIT_DEADLINE = os.getenv("EDIT_DEADLINE", "2026-04-16 23:59:59")
+EDIT_DEADLINE = os.getenv("EDIT_DEADLINE", "2026-04-30 23:59:59")
 
 app = Flask(__name__)
 _base_lock = Lock()
