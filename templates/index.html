@@ -12,6 +12,7 @@
       --borda:#d7deea;
       --ok:#0d7a3d;
       --erro:#b42318;
+      --alerta:#9a6700;
       --fundo:#f5f7fb;
       --branco:#ffffff;
     }
@@ -169,6 +170,11 @@
       color:var(--erro);
       border:1px solid #fecdca;
     }
+    .msg.alerta{
+      background:#fff8e6;
+      color:var(--alerta);
+      border:1px solid #f0d38a;
+    }
     .check{
       display:flex;
       gap:10px;
@@ -245,6 +251,8 @@
           </div>
         </div>
 
+        <div id="mensagemEdicao" class="msg"></div>
+
         <div style="height:16px"></div>
 
         <div class="linha">
@@ -280,7 +288,7 @@
           </div>
         </div>
 
-        <button class="btn btn-secundario" id="btnEnviar">Confirmar e enviar</button>
+        <button class="btn btn-secundario" id="btnEnviar">Salvar resposta</button>
         <div id="mensagemEnvio" class="msg"></div>
       </div>
 
@@ -290,6 +298,8 @@
 
   <script>
     const el = (id) => document.getElementById(id);
+    let edicoesAbertas = true;
+    let jaExisteResposta = false;
 
     function mostrarMensagem(alvo, texto, tipo) {
       alvo.textContent = texto;
@@ -309,8 +319,15 @@
       el('mesFerias').textContent = colaborador.mes_ferias || '';
       el('matriculaConfirmada').textContent = colaborador.matricula || '';
       el('blocoDados').style.display = 'block';
-      el('btnEnviar').style.display = 'block';
       window.scrollTo({ top: el('blocoDados').offsetTop - 10, behavior: 'smooth' });
+    }
+
+    function preencherRespostaExistente(resposta) {
+      el('tipoFerias').value = resposta?.tipo_ferias || '';
+      el('email').value = resposta?.email || '';
+      el('telefone').value = resposta?.telefone || '';
+      el('observacoes').value = resposta?.observacoes || '';
+      el('ciencia').checked = (resposta?.ciencia || '').toUpperCase() === 'SIM';
     }
 
     function limparFormulario() {
@@ -319,13 +336,44 @@
       el('telefone').value = '';
       el('observacoes').value = '';
       el('ciencia').checked = false;
-      el('btnEnviar').style.display = 'block';
       limparMensagem(el('mensagemEnvio'));
+      limparMensagem(el('mensagemEdicao'));
+    }
+
+    function aplicarModoEdicao() {
+      const bloqueado = !edicoesAbertas;
+      el('tipoFerias').disabled = bloqueado;
+      el('email').disabled = bloqueado;
+      el('telefone').disabled = bloqueado;
+      el('observacoes').disabled = bloqueado;
+      el('ciencia').disabled = bloqueado;
+      el('btnEnviar').disabled = bloqueado;
+
+      if (bloqueado) {
+        mostrarMensagem(
+          el('mensagemEdicao'),
+          'O prazo para inclusão ou alteração foi encerrado. Em caso de necessidade, contate o RH.',
+          'alerta'
+        );
+        el('btnEnviar').style.display = 'none';
+      } else if (jaExisteResposta) {
+        mostrarMensagem(
+          el('mensagemEdicao'),
+          'Já existe uma resposta registrada. Você pode revisar e alterar seus dados até o prazo final.',
+          'alerta'
+        );
+        el('btnEnviar').style.display = 'block';
+        el('btnEnviar').textContent = 'Atualizar resposta';
+      } else {
+        el('btnEnviar').style.display = 'block';
+        el('btnEnviar').textContent = 'Salvar resposta';
+      }
     }
 
     async function consultar() {
       limparMensagem(el('mensagemConsulta'));
       limparMensagem(el('mensagemEnvio'));
+      limparMensagem(el('mensagemEdicao'));
       el('blocoDados').style.display = 'none';
 
       const identificador = el('identificador').value.trim();
@@ -359,6 +407,15 @@
 
         preencherDados(dados.colaborador);
         limparFormulario();
+
+        edicoesAbertas = !!dados.edicoes_abertas;
+        jaExisteResposta = !!dados.resposta_existente;
+
+        if (dados.resposta_existente) {
+          preencherRespostaExistente(dados.resposta_existente);
+        }
+
+        aplicarModoEdicao();
       } catch (erro) {
         mostrarMensagem(el('mensagemConsulta'), 'Falha ao consultar. Tente novamente.', 'erro');
       } finally {
@@ -381,7 +438,7 @@
 
       const botao = el('btnEnviar');
       botao.disabled = true;
-      botao.textContent = 'Enviando...';
+      botao.textContent = jaExisteResposta ? 'Atualizando...' : 'Enviando...';
 
       try {
         const resp = await fetch('/api/enviar', {
@@ -395,7 +452,7 @@
         if (!resp.ok) {
           mostrarMensagem(
             el('mensagemEnvio'),
-            retorno.mensagem || 'Não foi possível enviar.',
+            retorno.mensagem || 'Não foi possível salvar.',
             'erro'
           );
           return;
@@ -403,15 +460,15 @@
 
         mostrarMensagem(
           el('mensagemEnvio'),
-          retorno.mensagem || 'Resposta enviada com sucesso.',
+          retorno.mensagem || 'Operação concluída com sucesso.',
           'ok'
         );
-        botao.style.display = 'none';
+        jaExisteResposta = true;
+        el('btnEnviar').textContent = 'Atualizar resposta';
       } catch (erro) {
-        mostrarMensagem(el('mensagemEnvio'), 'Falha ao enviar. Tente novamente.', 'erro');
+        mostrarMensagem(el('mensagemEnvio'), 'Falha ao salvar. Tente novamente.', 'erro');
       } finally {
         botao.disabled = false;
-        botao.textContent = 'Confirmar e enviar';
       }
     }
 
