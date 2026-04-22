@@ -91,6 +91,11 @@
       min-height:110px;
       resize:vertical;
     }
+    .ajuda{
+      margin-top:6px;
+      font-size:13px;
+      color:#667085;
+    }
     .grid{
       display:grid;
       grid-template-columns:1fr 1fr;
@@ -214,6 +219,7 @@
             placeholder="Digite sua matrícula ou CPF"
             autocomplete="off"
           >
+          <div class="ajuda">Informe somente números, sem pontos ou traços.</div>
         </div>
         <button class="btn btn-primario" id="btnConsultar">Consultar meus dados</button>
         <div id="mensagemConsulta" class="msg"></div>
@@ -257,7 +263,7 @@
           </div>
           <div class="linha">
             <label for="telefone">Telefone / WhatsApp com DDD</label>
-            <input type="text" id="telefone" placeholder="Ex.: 48999998888">
+            <input type="text" id="telefone" inputmode="numeric" placeholder="Ex.: 48999998888">
           </div>
         </div>
 
@@ -366,9 +372,6 @@
 
       const dados = {
         matricula: el('matriculaConfirmada').textContent.trim(),
-        nome: el('nome').textContent.trim(),
-        unidade: el('unidade').textContent.trim(),
-        mes_ferias: el('mesFerias').textContent.trim(),
         tipo_ferias: el('tipoFerias').value,
         email: el('email').value.trim(),
         telefone: el('telefone').value.trim(),
