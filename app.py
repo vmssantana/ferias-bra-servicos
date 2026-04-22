@@ -19,9 +19,11 @@ SCOPES = [
 SPREADSHEET_ID = os.getenv("SPREADSHEET_ID", "")
 BASE_SHEET_NAME = os.getenv("BASE_SHEET_NAME", "BASE_COLABORADORES")
 RESPONSES_SHEET_NAME = os.getenv("RESPONSES_SHEET_NAME", "RESPOSTAS_FERIAS")
+HISTORY_SHEET_NAME = os.getenv("HISTORY_SHEET_NAME", "HISTORICO_ALTERACOES")
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "RH_BRA_2026")
 CACHE_MINUTES = int(os.getenv("CACHE_MINUTES", "10"))
 PORT = int(os.getenv("PORT", "10000"))
+EDIT_DEADLINE = os.getenv("EDIT_DEADLINE", "2026-04-16 23:59:59")
 
 app = Flask(__name__)
 _base_lock = Lock()
@@ -41,6 +43,23 @@ RESPONSE_HEADERS = [
     "TELEFONE",
     "OBSERVACOES",
     "CIENCIA",
+]
+HISTORY_HEADERS = [
+    "DATA_HORA_ALTERACAO",
+    "MATRICULA",
+    "NOME",
+    "UNIDADE",
+    "MES_FERIAS",
+    "TIPO_FERIAS_ANTERIOR",
+    "EMAIL_ANTERIOR",
+    "TELEFONE_ANTERIOR",
+    "OBSERVACOES_ANTERIOR",
+    "CIENCIA_ANTERIOR",
+    "TIPO_FERIAS_NOVO",
+    "EMAIL_NOVO",
+    "TELEFONE_NOVO",
+    "OBSERVACOES_NOVO",
+    "CIENCIA_NOVO",
 ]
 
 
@@ -77,6 +96,18 @@ def phone_valid(phone: str) -> bool:
     return len(digits) in (10, 11)
 
 
+def now_str() -> str:
+    return datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+
+
+def edit_deadline() -> datetime:
+    return datetime.strptime(EDIT_DEADLINE, "%Y-%m-%d %H:%M:%S")
+
+
+def edits_open() -> bool:
+    return datetime.now() <= edit_deadline()
+
+
 def get_google_credentials() -> Credentials:
     raw_json = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON", "").strip()
     if not raw_json:
@@ -111,17 +142,26 @@ def get_worksheet(name: str):
         raise RuntimeError(f'A aba "{name}" não foi encontrada na planilha.') from exc
 
 
-def ensure_responses_sheet() -> None:
+def ensure_sheet_with_headers(name: str, headers: list[str]) -> None:
     ss = get_spreadsheet()
     try:
-        ws = ss.worksheet(RESPONSES_SHEET_NAME)
+        ws = ss.worksheet(name)
     except gspread.WorksheetNotFound:
-        ws = ss.add_worksheet(title=RESPONSES_SHEET_NAME, rows=1000, cols=len(RESPONSE_HEADERS))
+        ws = ss.add_worksheet(title=name, rows=1000, cols=max(len(headers), 20))
 
-    current = [normalize_header(v) for v in ws.row_values(1)[: len(RESPONSE_HEADERS)]]
-    expected = [normalize_header(v) for v in RESPONSE_HEADERS]
+    current = [normalize_header(v) for v in ws.row_values(1)[: len(headers)]]
+    expected = [normalize_header(v) for v in headers]
     if current != expected:
-        ws.update("A1:J1", [RESPONSE_HEADERS])
+        end_col = "J" if len(headers) == 10 else "O"
+        ws.update(f"A1:{end_col}1", [headers])
+
+
+def ensure_responses_sheet() -> None:
+    ensure_sheet_with_headers(RESPONSES_SHEET_NAME, RESPONSE_HEADERS)
+
+
+def ensure_history_sheet() -> None:
+    ensure_sheet_with_headers(HISTORY_SHEET_NAME, HISTORY_HEADERS)
 
 
 def load_base(force: bool = False) -> dict[str, dict]:
@@ -222,22 +262,44 @@ def find_collaborator(base: dict[str, dict], identificador: str) -> dict | None:
     return None
 
 
-def answer_exists(matricula: str) -> bool:
+def get_existing_answer(matricula: str) -> tuple[int | None, dict | None]:
     ws = get_worksheet(RESPONSES_SHEET_NAME)
-    values = ws.col_values(2)
+    values = ws.get_all_values()
     if len(values) <= 1:
-        return False
+        return None, None
 
-    target = only_digits(matricula) or normalize(matricula)
-    for value in values[1:]:
-        current = only_digits(value) or normalize(value)
-        if current == target:
-            return True
-    return False
+    for sheet_row_index, row in enumerate(values[1:], start=2):
+        current = normalize(row[1] if len(row) > 1 else "")
+        if current == normalize(matricula):
+            answer = {
+                "data_hora": normalize(row[0] if len(row) > 0 else ""),
+                "matricula": current,
+                "nome": normalize(row[2] if len(row) > 2 else ""),
+                "unidade": normalize(row[3] if len(row) > 3 else ""),
+                "mes_ferias": normalize(row[4] if len(row) > 4 else ""),
+                "tipo_ferias": normalize(row[5] if len(row) > 5 else ""),
+                "email": normalize(row[6] if len(row) > 6 else ""),
+                "telefone": normalize(row[7] if len(row) > 7 else ""),
+                "observacoes": normalize(row[8] if len(row) > 8 else ""),
+                "ciencia": normalize(row[9] if len(row) > 9 else ""),
+            }
+            return sheet_row_index, answer
+
+    return None, None
 
 
 def append_answer(row: list[str]) -> None:
     ws = get_worksheet(RESPONSES_SHEET_NAME)
+    ws.append_row(row, value_input_option="USER_ENTERED")
+
+
+def update_answer(sheet_row_index: int, row: list[str]) -> None:
+    ws = get_worksheet(RESPONSES_SHEET_NAME)
+    ws.update(f"A{sheet_row_index}:J{sheet_row_index}", [row])
+
+
+def append_history(row: list[str]) -> None:
+    ws = get_worksheet(HISTORY_SHEET_NAME)
     ws.append_row(row, value_input_option="USER_ENTERED")
 
 
@@ -248,7 +310,7 @@ def index():
 
 @app.get("/health")
 def health():
-    return jsonify({"ok": True})
+    return jsonify({"ok": True, "edicoes_abertas": edits_open(), "prazo_final": EDIT_DEADLINE})
 
 
 @app.post("/api/consultar")
@@ -272,14 +334,15 @@ def api_consultar():
                 "mensagem": "Matrícula ou CPF não localizado. Verifique os números digitados."
             }), 404
 
-        if answer_exists(collaborator["matricula"]):
-            return jsonify({
-                "sucesso": False,
-                "mensagem": "Já existe uma resposta registrada para este colaborador.",
-                "bloqueado": True,
-            }), 409
+        _, existing = get_existing_answer(collaborator["matricula"])
 
-        return jsonify({"sucesso": True, "colaborador": collaborator})
+        return jsonify({
+            "sucesso": True,
+            "colaborador": collaborator,
+            "resposta_existente": existing,
+            "edicoes_abertas": edits_open(),
+            "prazo_final": EDIT_DEADLINE,
+        })
     except Exception as exc:
         return jsonify({"sucesso": False, "mensagem": f"Erro ao consultar: {exc}"}), 500
 
@@ -293,6 +356,12 @@ def api_enviar():
     telefone = normalize(payload.get("telefone"))
     observacoes = normalize(payload.get("observacoes"))
     ciencia = bool(payload.get("ciencia"))
+
+    if not edits_open():
+        return jsonify({
+            "sucesso": False,
+            "mensagem": f"O prazo para inclusão ou alteração foi encerrado em {EDIT_DEADLINE}."
+        }), 403
 
     if not matricula:
         return jsonify({"sucesso": False, "mensagem": "Informe a matrícula."}), 400
@@ -315,24 +384,51 @@ def api_enviar():
         if not collaborator:
             return jsonify({"sucesso": False, "mensagem": "Matrícula não localizada."}), 404
 
+        new_row = [
+            now_str(),
+            collaborator["matricula"],
+            collaborator["nome"],
+            collaborator["unidade"],
+            collaborator["mes_ferias"],
+            tipo_ferias,
+            email,
+            telefone,
+            observacoes,
+            "SIM",
+        ]
+
         with _write_lock:
-            if answer_exists(collaborator["matricula"]):
-                return jsonify({"sucesso": False, "mensagem": "Já existe uma resposta registrada para esta matrícula."}), 409
+            sheet_row_index, existing = get_existing_answer(collaborator["matricula"])
 
-            append_answer([
-                datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
-                collaborator["matricula"],
-                collaborator["nome"],
-                collaborator["unidade"],
-                collaborator["mes_ferias"],
-                tipo_ferias,
-                email,
-                telefone,
-                observacoes,
-                "SIM",
-            ])
+            if existing:
+                append_history([
+                    now_str(),
+                    collaborator["matricula"],
+                    collaborator["nome"],
+                    collaborator["unidade"],
+                    collaborator["mes_ferias"],
+                    existing["tipo_ferias"],
+                    existing["email"],
+                    existing["telefone"],
+                    existing["observacoes"],
+                    existing["ciencia"],
+                    tipo_ferias,
+                    email,
+                    telefone,
+                    observacoes,
+                    "SIM",
+                ])
+                update_answer(sheet_row_index, new_row)
+                return jsonify({
+                    "sucesso": True,
+                    "mensagem": "Alteração realizada com sucesso."
+                })
 
-        return jsonify({"sucesso": True, "mensagem": "Resposta enviada com sucesso."})
+            append_answer(new_row)
+            return jsonify({
+                "sucesso": True,
+                "mensagem": "Resposta enviada com sucesso."
+            })
     except Exception as exc:
         return jsonify({"sucesso": False, "mensagem": f"Erro ao enviar: {exc}"}), 500
 
@@ -377,5 +473,6 @@ def admin_exportar():
 
 if __name__ == "__main__":
     ensure_responses_sheet()
+    ensure_history_sheet()
     load_base(force=True)
     app.run(host="0.0.0.0", port=PORT, debug=False)
