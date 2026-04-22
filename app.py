@@ -52,6 +52,22 @@ def only_digits(value) -> str:
     return "".join(ch for ch in str("" if value is None else value) if ch.isdigit())
 
 
+def normalize_header(value) -> str:
+    text = normalize(value).upper()
+    replacements = {
+        "Á": "A", "À": "A", "Â": "A", "Ã": "A",
+        "É": "E", "Ê": "E",
+        "Í": "I",
+        "Ó": "O", "Ô": "O", "Õ": "O",
+        "Ú": "U",
+        "Ç": "C",
+    }
+    for src, dst in replacements.items():
+        text = text.replace(src, dst)
+    text = text.replace(" ", "_")
+    return text
+
+
 def email_valid(email: str) -> bool:
     return "@" in email and "." in email.split("@")[-1] and " " not in email
 
@@ -102,28 +118,45 @@ def ensure_responses_sheet() -> None:
     except gspread.WorksheetNotFound:
         ws = ss.add_worksheet(title=RESPONSES_SHEET_NAME, rows=1000, cols=len(RESPONSE_HEADERS))
 
-    current = ws.row_values(1)
-    if current[: len(RESPONSE_HEADERS)] != RESPONSE_HEADERS:
+    current = [normalize_header(v) for v in ws.row_values(1)[: len(RESPONSE_HEADERS)]]
+    expected = [normalize_header(v) for v in RESPONSE_HEADERS]
+    if current != expected:
         ws.update("A1:J1", [RESPONSE_HEADERS])
 
 
 def load_base(force: bool = False) -> dict[str, dict]:
     global _base_cache, _base_cache_expires_at
+
     with _base_lock:
         now = datetime.now()
         if not force and _base_cache and _base_cache_expires_at and now < _base_cache_expires_at:
             return _base_cache
 
         ws = get_worksheet(BASE_SHEET_NAME)
-        records = ws.get_all_records(expected_headers=BASE_FIELDS)
+        values = ws.get_all_values()
+
+        if not values:
+            raise RuntimeError('A aba "BASE_COLABORADORES" está vazia.')
+
+        raw_headers = values[0]
+        headers = [normalize_header(h) for h in raw_headers]
+
+        missing = [field for field in BASE_FIELDS if field not in headers]
+        if missing:
+            raise RuntimeError(
+                "Cabeçalhos obrigatórios não encontrados na aba BASE_COLABORADORES: "
+                + ", ".join(missing)
+            )
+
+        idx = {header: headers.index(header) for header in BASE_FIELDS}
 
         result: dict[str, dict] = {}
         matriculas_duplicadas: list[str] = []
         cpfs_duplicados: list[str] = []
 
-        for row in records:
-            matricula = normalize(row.get("MATRICULA"))
-            cpf = only_digits(row.get("CPF"))
+        for row in values[1:]:
+            matricula = normalize(row[idx["MATRICULA"]] if idx["MATRICULA"] < len(row) else "")
+            cpf = only_digits(row[idx["CPF"]] if idx["CPF"] < len(row) else "")
 
             if not matricula:
                 continue
@@ -131,9 +164,9 @@ def load_base(force: bool = False) -> dict[str, dict]:
             collaborator = {
                 "matricula": matricula,
                 "cpf": cpf,
-                "nome": normalize(row.get("NOME")),
-                "unidade": normalize(row.get("UNIDADE")),
-                "mes_ferias": normalize(row.get("MES_FERIAS")),
+                "nome": normalize(row[idx["NOME"]] if idx["NOME"] < len(row) else ""),
+                "unidade": normalize(row[idx["UNIDADE"]] if idx["UNIDADE"] < len(row) else ""),
+                "mes_ferias": normalize(row[idx["MES_FERIAS"]] if idx["MES_FERIAS"] < len(row) else ""),
             }
 
             chave_matricula = f"matricula:{matricula}"
@@ -178,6 +211,10 @@ def find_collaborator(base: dict[str, dict], identificador: str) -> dict | None:
         return collaborator
 
     if identificador_numerico:
+        collaborator = base.get(f"matricula:{identificador_numerico}")
+        if collaborator:
+            return collaborator
+
         collaborator = base.get(f"cpf:{identificador_numerico}")
         if collaborator:
             return collaborator
@@ -190,9 +227,11 @@ def answer_exists(matricula: str) -> bool:
     values = ws.col_values(2)
     if len(values) <= 1:
         return False
-    target = normalize(matricula)
+
+    target = only_digits(matricula) or normalize(matricula)
     for value in values[1:]:
-        if normalize(value) == target:
+        current = only_digits(value) or normalize(value)
+        if current == target:
             return True
     return False
 
@@ -230,7 +269,7 @@ def api_consultar():
         if not collaborator:
             return jsonify({
                 "sucesso": False,
-                "mensagem": "Matrícula ou CPF não localizado."
+                "mensagem": "Matrícula ou CPF não localizado. Verifique os números digitados."
             }), 404
 
         if answer_exists(collaborator["matricula"]):
@@ -272,12 +311,12 @@ def api_enviar():
 
     try:
         base = load_base()
-        collaborator = base.get(f"matricula:{matricula}")
+        collaborator = find_collaborator(base, matricula)
         if not collaborator:
             return jsonify({"sucesso": False, "mensagem": "Matrícula não localizada."}), 404
 
         with _write_lock:
-            if answer_exists(matricula):
+            if answer_exists(collaborator["matricula"]):
                 return jsonify({"sucesso": False, "mensagem": "Já existe uma resposta registrada para esta matrícula."}), 409
 
             append_answer([
